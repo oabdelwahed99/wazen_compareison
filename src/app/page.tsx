@@ -1,103 +1,370 @@
-import Image from "next/image";
+"use client";
+
+import { useState } from "react";
+import * as XLSX from "xlsx";
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [results, setResults] = useState<any[] | null>(null);
+  const [competitors, setCompetitors] = useState<string[]>([]);
+  const [selectedCompetitors, setSelectedCompetitors] = useState<string[]>([]);
+  const [activeTab, setActiveTab] = useState<"table1" | "table2" | "table3">("table1");
+  const [priceFilter, setPriceFilter] = useState<"all" | "lowest" | "highest" | "belowAvg" | "aboveAvg">("all");
+  const [feasibilityFilter, setFeasibilityFilter] = useState<"all" | "profit" | "breakeven" | "loss">("all");
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFile(e.target.files?.[0] || null);
+  };
+
+  const handleUpload = async () => {
+    if (!file) return;
+    const formData = new FormData();
+    formData.append("file", file);
+    setUploading(true);
+    try {
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+
+      if (Array.isArray(data) && data.length > 0 && data[0].prices) {
+        const competitorList = Object.keys(data[0].prices);
+        setCompetitors(competitorList);
+        setSelectedCompetitors(competitorList);
+      }
+
+      setResults(Array.isArray(data) ? data : null);
+    } catch (error) {
+      console.error("Upload failed:", error);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleCompetitorSelection = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const selected = Array.from(e.target.selectedOptions, (option) => option.value);
+    setSelectedCompetitors(selected);
+  };
+
+  const getStats = (prices: any): {
+    min: number;
+    max: number;
+    avg: number;
+    validPrices: number[];
+  } => {
+    const validPrices = Object.entries(prices)
+      .map(([_, v]) => Number(v))
+      .filter((v) => !isNaN(v) && v > 0);
+
+    if (validPrices.length === 0) {
+      return { min: 0, max: 0, avg: 0, validPrices: [] };
+    }
+
+    const min = Math.min(...validPrices);
+    const max = Math.max(...validPrices);
+    const avg = validPrices.reduce((a, b) => a + b, 0) / validPrices.length;
+    return { min, max, avg, validPrices };
+  };
+
+  const getFilteredResults = () => {
+    if (!results) return [];
+
+    return results.filter((row) => {
+      if (activeTab === "table2") {
+        const stats = getStats(row.prices || {});
+        const selling = Number(row.sellingPrice);
+        if (stats.validPrices.length === 0) return priceFilter === "all";
+        if (priceFilter === "lowest") return selling === stats.min;
+        if (priceFilter === "highest") return selling === stats.max;
+        if (priceFilter === "belowAvg") return selling < stats.avg && selling !== stats.min;
+        if (priceFilter === "aboveAvg") return selling > stats.avg && selling !== stats.max;
+        return true;
+      }
+
+      if (activeTab === "table3") {
+        const cost = Number(row.cost);
+        const stats = getStats(row.prices || {});
+        const isLoss = stats.min < cost;
+        const isBreakeven = stats.min === cost;
+        const isProfit = stats.min > cost;
+
+        if (stats.validPrices.length === 0) return feasibilityFilter === "all";
+        if (feasibilityFilter === "profit") return isProfit;
+        if (feasibilityFilter === "breakeven") return isBreakeven;
+        if (feasibilityFilter === "loss") return isLoss;
+        return true;
+      }
+
+      return true;
+    });
+  };
+
+  const handleDownloadExcel = () => {
+    if (!results || !Array.isArray(results)) return;
+
+    const filtered = getFilteredResults();
+
+    const excelData = filtered.map((row) => {
+      const stats = getStats(row.prices || {});
+      const flatRow: any = {
+        "Product Name": row.productName || "",
+        "Product Code": row.productCode || "",
+        Cost: row.cost || "",
+        "Our Price": row.sellingPrice || "",
+      };
+
+      selectedCompetitors.forEach((competitor) => {
+        const price = Number(row.prices?.[competitor]);
+        flatRow[competitor] = isNaN(price) ? "" : price;
+      });
+
+      if (activeTab === "table2") {
+        const selling = Number(row.sellingPrice);
+        flatRow["Price Status"] =
+          stats.validPrices.length === 0
+            ? "No data"
+            : selling === stats.min
+            ? "Lowest"
+            : selling === stats.max
+            ? "Highest"
+            : selling < stats.avg
+            ? "Below Avg"
+            : "Above Avg";
+      }
+
+      if (activeTab === "table3") {
+        const cost = Number(row.cost);
+        const isLoss = stats.min < cost;
+        const isBreakeven = stats.min === cost;
+        const isProfit = stats.min > cost;
+        flatRow["Feasibility"] =
+          stats.validPrices.length === 0
+            ? "No data"
+            : isProfit
+            ? "Profitable"
+            : isBreakeven
+            ? "Breakeven"
+            : "Loss";
+      }
+
+      flatRow["Min Price"] = stats.validPrices.length === 0 ? "" : stats.min;
+      return flatRow;
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(excelData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Filtered Results");
+    XLSX.writeFile(workbook, `${activeTab}-filtered-prices.xlsx`);
+  };
+
+  const filteredResults = getFilteredResults();
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-100 p-8">
+      <div className="max-w-6xl mx-auto">
+        <h1 className="text-3xl font-bold mb-6 text-center text-purple-800">
+          Competitor Price Analysis
+        </h1>
+
+        <div className="bg-white shadow-md rounded-xl p-6 mb-8">
+          <input type="file" accept=".xlsx, .xls" onChange={handleFileChange} className="mb-4" />
+          <button
+            onClick={handleUpload}
+            disabled={!file || uploading}
+            className="bg-purple-600 text-white px-6 py-2 rounded-md hover:bg-purple-700 disabled:bg-gray-400 transition"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+            {uploading ? "Uploading..." : "Upload Excel"}
+          </button>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+        {results && results.length > 0 && (
+          <>
+            <div className="flex gap-4 mb-4">
+              {["table1", "table2", "table3"].map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab as any)}
+                  className={`px-4 py-2 rounded-md font-medium ${
+                    activeTab === tab
+                      ? "bg-purple-600 text-white"
+                      : "bg-white border border-gray-300"
+                  }`}
+                >
+                  {tab === "table1"
+                    ? "1️⃣ Our vs Competitor"
+                    : tab === "table2"
+                    ? "2️⃣ Price Ranking"
+                    : "3️⃣ Profit Feasibility"}
+                </button>
+              ))}
+            </div>
+
+            {activeTab === "table2" && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Filter by Price Status:
+                </label>
+                <select
+                  value={priceFilter}
+                  onChange={(e) => setPriceFilter(e.target.value as any)}
+                  className="w-full border border-gray-300 rounded-md p-2"
+                >
+                  <option value="all">All</option>
+                  <option value="lowest">🟢 Lowest</option>
+                  <option value="highest">🔴 Highest</option>
+                  <option value="belowAvg">🟡 Below Avg</option>
+                  <option value="aboveAvg">🟣 Above Avg</option>
+                </select>
+              </div>
+            )}
+
+            {activeTab === "table3" && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Filter by Feasibility:
+                </label>
+                <select
+                  value={feasibilityFilter}
+                  onChange={(e) => setFeasibilityFilter(e.target.value as any)}
+                  className="w-full border border-gray-300 rounded-md p-2"
+                >
+                  <option value="all">All</option>
+                  <option value="profit">✅ Profitable</option>
+                  <option value="breakeven">⚠️ Breakeven</option>
+                  <option value="loss">❌ Loss</option>
+                </select>
+              </div>
+            )}
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Select Competitors to Display:
+              </label>
+              <select
+                multiple
+                value={selectedCompetitors}
+                onChange={handleCompetitorSelection}
+                className="w-full border border-gray-300 rounded-md p-2"
+              >
+                {competitors.map((competitor) => (
+                  <option key={competitor} value={competitor}>
+                    {competitor}
+                  </option>
+                ))}
+              </select>
+              <p className="text-sm text-gray-500 mt-1">
+                Hold Ctrl (Cmd on Mac) or Shift to select multiple.
+              </p>
+            </div>
+
+            <div className="overflow-x-auto bg-white p-6 rounded-xl shadow-md">
+              <table className="table-auto w-full border border-gray-300 text-sm text-left">
+                <thead className="bg-purple-100 text-purple-900">
+                  <tr>
+                    <th className="px-4 py-2 border">Product Name</th>
+                    <th className="px-4 py-2 border">Product Code</th>
+                    <th className="px-4 py-2 border">Cost</th>
+                    <th className="px-4 py-2 border">Our Price</th>
+                    {selectedCompetitors.map((c) => (
+                      <th key={c} className="px-4 py-2 border">
+                        {c}
+                      </th>
+                    ))}
+                    {activeTab === "table2" && <th className="px-4 py-2 border">Price Status</th>}
+                    {activeTab === "table3" && <th className="px-4 py-2 border">Feasibility</th>}
+                    {(activeTab === "table2" || activeTab === "table3") && (
+                      <th className="px-4 py-2 border text-blue-800">Min Price</th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredResults.map((row, idx) => {
+                    const stats = getStats(row.prices || {});
+                    const selling = Number(row.sellingPrice);
+                    const cost = Number(row.cost);
+                    const isLoss = stats.min < cost;
+                    const isBreakeven = stats.min === cost;
+                    const isProfit = stats.min > cost;
+
+                    return (
+                      <tr key={idx} className="hover:bg-gray-100">
+                        <td className="px-4 py-2 border">{row.productName || "-"}</td>
+                        <td className="px-4 py-2 border">{row.productCode || "-"}</td>
+                        <td className="px-4 py-2 border">{row.cost || "-"}</td>
+                        <td className="px-4 py-2 border">{row.sellingPrice || "-"}</td>
+                        {selectedCompetitors.map((c) => {
+                          const price = Number(row.prices?.[c]);
+                          const isLower = !isNaN(price) && price < selling;
+                          return (
+                            <td
+                              key={`${idx}-${c}`}
+                              className={`px-4 py-2 border ${
+                                isLower ? "text-red-600" : "text-gray-700"
+                              }`}
+                            >
+                              {!isNaN(price) ? price : "-"}
+                            </td>
+                          );
+                        })}
+                        {activeTab === "table2" && (
+                          <td className="px-4 py-2 border">
+                            {stats.validPrices.length === 0
+                              ? "No data"
+                              : selling === stats.min
+                              ? "🟢 Lowest"
+                              : selling === stats.max
+                              ? "🔴 Highest"
+                              : selling < stats.avg
+                              ? "🟡 Below Avg"
+                              : "🟣 Above Avg"}
+                          </td>
+                        )}
+                        {activeTab === "table3" && (
+                          <td
+                            className={`px-4 py-2 border font-semibold ${
+                              stats.validPrices.length === 0
+                                ? "text-gray-500"
+                                : isProfit
+                                ? "text-green-600"
+                                : isBreakeven
+                                ? "text-yellow-600"
+                                : "text-red-600"
+                            }`}
+                          >
+                            {stats.validPrices.length === 0
+                              ? "No competitor data"
+                              : isProfit
+                              ? "✅ Profitable"
+                              : isBreakeven
+                              ? "⚠️ Breakeven"
+                              : "❌ Loss"}
+                          </td>
+                        )}
+                        {(activeTab === "table2" || activeTab === "table3") && (
+                          <td className="px-4 py-2 border text-blue-700 font-medium">
+                            {stats.validPrices.length > 0 ? stats.min : "-"}
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              <div className="mt-6 text-right">
+                <button
+                  onClick={handleDownloadExcel}
+                  className="bg-green-600 text-white px-5 py-2 rounded-md hover:bg-green-700 transition"
+                >
+                  Download Filtered Excel
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
