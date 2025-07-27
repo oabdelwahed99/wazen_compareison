@@ -55,7 +55,7 @@ export default async function handler(
     const allResults: any[] = [];
 
     const startTime = Date.now();
-    const MAX_EXECUTION_TIME = 1000 * 290; // 4 minutes and 50 seconds
+    const MAX_EXECUTION_TIME = 1000 * 280; // 4 minutes and 50 seconds
 
     let numProductsProcessed = 0;
 
@@ -74,7 +74,18 @@ export default async function handler(
           continue;
         }
 
+        if (Date.now() - startTime > MAX_EXECUTION_TIME) {
+          console.warn("Timeout approaching. Returning partial results.");
+          return res.status(206).json({
+            statusCode: "206",
+            rowCount,
+            numProductsProcessed,
+            results: allResults,
+          });
+        }
+
         const price = await scraper(url);
+
         prices[competitor] = price;
 
         if (Date.now() - startTime > MAX_EXECUTION_TIME) {
