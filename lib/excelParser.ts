@@ -9,7 +9,10 @@ export interface Product {
   urls: { [key: string]: string };
 }
 
-export function parseProductExcel(fileBuffer: Buffer): Product[] {
+export function parseProductExcel(fileBuffer: Buffer): {
+  products: Product[];
+  rowCount: number;
+} {
   const workbook = xlsx.read(fileBuffer, { type: "buffer" });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const data = xlsx.utils.sheet_to_json<Record<string, string>>(sheet);
@@ -38,5 +41,5 @@ export function parseProductExcel(fileBuffer: Buffer): Product[] {
     };
   });
 
-  return products;
+  return { products, rowCount: data.length };
 }

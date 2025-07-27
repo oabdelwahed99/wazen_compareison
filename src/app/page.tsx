@@ -17,31 +17,63 @@ export default function Home() {
     setFile(e.target.files?.[0] || null);
   };
 
+  const [rowCount, setRowCount] = useState<number | null>(null);
+  const [numProductsProcessed, setNumProductsProcessed] = useState<number>(0);
+  
+  const fetchBatch = async (startIndex: number = 0) => {
+    const formData = new FormData();
+    if (!file) return;
+  
+    formData.append("file", file);
+  
+    const url = `/api/upload?startIndex=${startIndex}`;
+  
+    const res = await fetch(url, {
+      method: "POST",
+      body: formData,
+    });
+  
+    const data = await res.json();
+    const newResults = data.results;
+    const totalRowCount = data.rowCount;
+    const processed = data.numProductsProcessed;
+
+    // Append to current results
+    setResults((prev) => (prev ? [...prev, ...newResults] : newResults));
+    setRowCount(rowCount);
+    setNumProductsProcessed(numProductsProcessed);
+  
+    // Update competitors only if not already done
+    if (newResults.length > 0 && newResults[0].prices && competitors.length === 0) {
+      const competitorList = Object.keys(newResults[0].prices);
+      setCompetitors(competitorList);
+      setSelectedCompetitors(competitorList);
+    }
+  
+    // Continue fetching if backend responded with 206 Partial Content
+    if (res.status === 206 && processed > 0 && processed + startIndex < totalRowCount) {
+    setTimeout(() => {
+      fetchBatch(startIndex + processed);
+    }, 1000); // Optional: add delay to reduce backend load
+    }
+  };
+  
   const handleUpload = async () => {
     if (!file) return;
-    const formData = new FormData();
-    formData.append("file", file);
     setUploading(true);
+    setResults(null);
+    setRowCount(null);
+    setNumProductsProcessed(0);
+  
     try {
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-      const data = await res.json();
-
-      if (Array.isArray(data) && data.length > 0 && data[0].prices) {
-        const competitorList = Object.keys(data[0].prices);
-        setCompetitors(competitorList);
-        setSelectedCompetitors(competitorList);
-      }
-
-      setResults(Array.isArray(data) ? data : null);
+      await fetchBatch(0); // Start recursive fetching from beginning
     } catch (error) {
       console.error("Upload failed:", error);
     } finally {
       setUploading(false);
     }
   };
+  
 
   const handleCompetitorSelection = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const selected = Array.from(e.target.selectedOptions, (option) => option.value);

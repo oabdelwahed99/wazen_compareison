@@ -41,25 +41,27 @@ export default async function handler(
     }
 
     let file: formidable.File | null = null;
-
     if (files.file) {
-      if (Array.isArray(files.file)) {
-        file = files.file[0];
-      } else {
-        file = files.file;
-      }
+      file = Array.isArray(files.file) ? files.file[0] : files.file;
     }
-    if (!file) {
-      return;
-    }
+    if (!file) return res.status(400).json({ error: "No file uploaded." });
+
     const excelBuffer = fs.readFileSync(file.filepath);
 
-    const products = parseProductExcel(excelBuffer); // update this to support buffer input
+    const startIndex = Number(req.query.startIndex || 0);
+
+    const { products: allProducts, rowCount } = parseProductExcel(excelBuffer);
+    const products = allProducts.slice(startIndex);
     const allResults: any[] = [];
+
+    const startTime = Date.now();
+    const MAX_EXECUTION_TIME = 1000 * 290; // 4 minutes and 50 seconds
+
+    let numProductsProcessed = 0;
 
     for (const product of products) {
       const prices: Record<string, number | null> = {};
-      console.log(product);
+
       for (const [competitor, url] of Object.entries(product.urls)) {
         if (!url || url === "NA") {
           prices[competitor] = null;
@@ -74,7 +76,16 @@ export default async function handler(
 
         const price = await scraper(url);
         prices[competitor] = price;
-        console.log(competitor, price);
+
+        if (Date.now() - startTime > MAX_EXECUTION_TIME) {
+          console.warn("Timeout approaching. Returning partial results.");
+          return res.status(206).json({
+            statusCode: "206",
+            rowCount,
+            numProductsProcessed,
+            results: allResults,
+          });
+        }
       }
 
       allResults.push({
@@ -84,8 +95,15 @@ export default async function handler(
         sellingPrice: product.sellingPrice,
         prices,
       });
+
+      numProductsProcessed++;
     }
 
-    return res.status(200).json(allResults);
+    return res.status(200).json({
+      statusCode: "200",
+      rowCount,
+      numProductsProcessed,
+      results: allResults,
+    });
   });
 }
