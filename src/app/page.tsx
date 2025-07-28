@@ -40,8 +40,10 @@ export default function Home() {
 
     // Append to current results
     setResults((prev) => (prev ? [...prev, ...newResults] : newResults));
-    setRowCount(rowCount);
-    setNumProductsProcessed(numProductsProcessed);
+    setRowCount(totalRowCount); // ← FIXED
+    setNumProductsProcessed(startIndex + processed); // ← FIXED 
+    // setRowCount(rowCount);
+    // setNumProductsProcessed(numProductsProcessed);
   
     // Update competitors only if not already done
     if (newResults.length > 0 && newResults[0].prices && competitors.length === 0) {
@@ -385,13 +387,22 @@ export default function Home() {
                 </tbody>
               </table>
 
-              <div className="mt-6 text-right">
+              <div className="mt-6 text-right py-2 ">
                 <button
                   onClick={handleDownloadExcel}
                   className="bg-green-600 text-white px-5 py-2 rounded-md hover:bg-green-700 transition"
                 >
-                  Download Filtered Excel
+                Download Filtered Excel
                 </button>
+                <div className="w-full bg-gray-200 rounded-full h-2.5 mt-2">
+                  <div
+                    className="bg-purple-600 h-2.5 rounded-full transition-all"
+                    style={{ width: `${(numProductsProcessed / rowCount!) * 100}%` }}
+                  />
+                </div>
+                <p className="text-sm mt-1 text-gray-600">
+                {rowCount ? `${numProductsProcessed} / ${rowCount} processed` : "Waiting for upload..."}
+                </p>
               </div>
             </div>
           </>
