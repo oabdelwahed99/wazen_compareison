@@ -13,6 +13,13 @@ export async function scrapePrice2B(url: string): Promise<number | null> {
 
     const $ = cheerio.load(data);
 
+    // Check for out-of-stock message
+    const outOfStockText = $("span.stock.unavailable.spec-value").text().trim();
+    if (outOfStockText.includes("غير متوفر بالمخزن")) {
+      console.log("⚠️ Product is out of stock (2B).");
+      return 0;
+    }
+
     // Extract special price (discounted price)
     const specialPrice = $(
       'span.special-price span[data-price-type="finalPrice"]'

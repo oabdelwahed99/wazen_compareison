@@ -9,9 +9,15 @@ export default function Home() {
   const [results, setResults] = useState<any[] | null>(null);
   const [competitors, setCompetitors] = useState<string[]>([]);
   const [selectedCompetitors, setSelectedCompetitors] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<"table1" | "table2" | "table3">("table1");
-  const [priceFilter, setPriceFilter] = useState<"all" | "lowest" | "highest" | "belowAvg" | "aboveAvg">("all");
-  const [feasibilityFilter, setFeasibilityFilter] = useState<"all" | "profit" | "breakeven" | "loss">("all");
+  const [activeTab, setActiveTab] = useState<"table1" | "table2" | "table3">(
+    "table1"
+  );
+  const [priceFilter, setPriceFilter] = useState<
+    "all" | "lowest" | "highest" | "belowAvg" | "aboveAvg"
+  >("all");
+  const [feasibilityFilter, setFeasibilityFilter] = useState<
+    "all" | "profit" | "breakeven" | "loss"
+  >("all");
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFile(e.target.files?.[0] || null);
@@ -19,20 +25,20 @@ export default function Home() {
 
   const [rowCount, setRowCount] = useState<number | null>(null);
   const [numProductsProcessed, setNumProductsProcessed] = useState<number>(0);
-  
+
   const fetchBatch = async (startIndex: number = 0) => {
     const formData = new FormData();
     if (!file) return;
-  
+
     formData.append("file", file);
-  
+
     const url = `/api/upload?startIndex=${startIndex}`;
-  
+
     const res = await fetch(url, {
       method: "POST",
       body: formData,
     });
-  
+
     const data = await res.json();
     const newResults = data.results;
     const totalRowCount = data.rowCount;
@@ -41,32 +47,40 @@ export default function Home() {
     // Append to current results
     setResults((prev) => (prev ? [...prev, ...newResults] : newResults));
     setRowCount(totalRowCount); // ← FIXED
-    setNumProductsProcessed(startIndex + processed); // ← FIXED 
+    setNumProductsProcessed(startIndex + processed); // ← FIXED
     // setRowCount(rowCount);
     // setNumProductsProcessed(numProductsProcessed);
-  
+
     // Update competitors only if not already done
-    if (newResults.length > 0 && newResults[0].prices && competitors.length === 0) {
+    if (
+      newResults.length > 0 &&
+      newResults[0].prices &&
+      competitors.length === 0
+    ) {
       const competitorList = Object.keys(newResults[0].prices);
       setCompetitors(competitorList);
       setSelectedCompetitors(competitorList);
     }
-  
+
     // Continue fetching if backend responded with 206 Partial Content
-    if (res.status === 206 && processed > 0 && processed + startIndex < totalRowCount) {
-    setTimeout(() => {
-      fetchBatch(startIndex + processed);
-    }, 1000); // Optional: add delay to reduce backend load
+    if (
+      res.status === 206 &&
+      processed > 0 &&
+      processed + startIndex < totalRowCount
+    ) {
+      setTimeout(() => {
+        fetchBatch(startIndex + processed);
+      }, 1000); // Optional: add delay to reduce backend load
     }
   };
-  
+
   const handleUpload = async () => {
     if (!file) return;
     setUploading(true);
     setResults(null);
     setRowCount(null);
     setNumProductsProcessed(0);
-  
+
     try {
       await fetchBatch(0); // Start recursive fetching from beginning
     } catch (error) {
@@ -75,14 +89,20 @@ export default function Home() {
       setUploading(false);
     }
   };
-  
 
-  const handleCompetitorSelection = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const selected = Array.from(e.target.selectedOptions, (option) => option.value);
+  const handleCompetitorSelection = (
+    e: React.ChangeEvent<HTMLSelectElement>
+  ) => {
+    const selected = Array.from(
+      e.target.selectedOptions,
+      (option) => option.value
+    );
     setSelectedCompetitors(selected);
   };
 
-  const getStats = (prices: any): {
+  const getStats = (
+    prices: any
+  ): {
     min: number;
     max: number;
     avg: number;
@@ -110,10 +130,12 @@ export default function Home() {
         const stats = getStats(row.prices || {});
         const selling = Number(row.sellingPrice);
         if (stats.validPrices.length === 0) return priceFilter === "all";
-        if (priceFilter === "lowest") return selling === stats.min;
-        if (priceFilter === "highest") return selling === stats.max;
-        if (priceFilter === "belowAvg") return selling < stats.avg && selling !== stats.min;
-        if (priceFilter === "aboveAvg") return selling > stats.avg && selling !== stats.max;
+        if (priceFilter === "lowest") return selling <= stats.min;
+        if (priceFilter === "highest") return selling >= stats.max;
+        if (priceFilter === "belowAvg")
+          return selling < stats.avg && selling !== stats.min;
+        if (priceFilter === "aboveAvg")
+          return selling > stats.avg && selling !== stats.max;
         return true;
       }
 
@@ -159,9 +181,9 @@ export default function Home() {
         flatRow["Price Status"] =
           stats.validPrices.length === 0
             ? "No data"
-            : selling === stats.min
+            : selling <= stats.min
             ? "Lowest"
-            : selling === stats.max
+            : selling >= stats.max
             ? "Highest"
             : selling < stats.avg
             ? "Below Avg"
@@ -203,7 +225,12 @@ export default function Home() {
         </h1>
 
         <div className="bg-white shadow-md rounded-xl p-6 mb-8">
-          <input type="file" accept=".xlsx, .xls" onChange={handleFileChange} className="mb-4" />
+          <input
+            type="file"
+            accept=".xlsx, .xls"
+            onChange={handleFileChange}
+            className="mb-4"
+          />
           <button
             onClick={handleUpload}
             disabled={!file || uploading}
@@ -306,10 +333,24 @@ export default function Home() {
                         {c}
                       </th>
                     ))}
-                    {activeTab === "table2" && <th className="px-4 py-2 border">Price Status</th>}
-                    {activeTab === "table3" && <th className="px-4 py-2 border">Feasibility</th>}
+                    <th className="px-4 py-2 border text-green-700">
+                      Cheapest Competitor
+                    </th>
+                    {activeTab === "table2" && (
+                      <th className="px-4 py-2 border">Price Status</th>
+                    )}
+                    {activeTab === "table3" && (
+                      <th className="px-4 py-2 border">Feasibility</th>
+                    )}
+                    {activeTab === "table3" && (
+                      <th className="px-4 py-2 border">
+                        Status in case of minimum
+                      </th>
+                    )}
                     {(activeTab === "table2" || activeTab === "table3") && (
-                      <th className="px-4 py-2 border text-blue-800">Min Price</th>
+                      <th className="px-4 py-2 border text-blue-800">
+                        Min Price among competitors
+                      </th>
                     )}
                   </tr>
                 </thead>
@@ -321,34 +362,79 @@ export default function Home() {
                     const isLoss = stats.min < cost;
                     const isBreakeven = stats.min === cost;
                     const isProfit = stats.min > cost;
+                    const cheapestCompetitor =
+                      stats.validPrices.length > 0
+                        ? Object.entries(row.prices || {})
+                            .filter(
+                              ([_, v]) => !isNaN(Number(v)) && Number(v) > 0
+                            )
+                            .reduce((min, curr) =>
+                              Number(curr[1]) < Number(min[1]) ? curr : min
+                            )[0]
+                        : "-";
 
                     return (
                       <tr key={idx} className="hover:bg-gray-100">
-                        <td className="px-4 py-2 border">{row.productName || "-"}</td>
-                        <td className="px-4 py-2 border">{row.productCode || "-"}</td>
+                        <td className="px-4 py-2 border">
+                          {row.productName || "-"}
+                        </td>
+                        <td className="px-4 py-2 border">
+                          {row.productCode || "-"}
+                        </td>
                         <td className="px-4 py-2 border">{row.cost || "-"}</td>
-                        <td className="px-4 py-2 border">{row.sellingPrice || "-"}</td>
+                        <td className="px-4 py-2 border">
+                          {row.sellingPrice || "-"}
+                        </td>
                         {selectedCompetitors.map((c) => {
-                          const price = Number(row.prices?.[c]);
-                          const isLower = !isNaN(price) && price < selling;
+                          const rawPrice = row.prices?.[c];
+                          let displayValue: string | number;
+
+                          if (
+                            rawPrice === null ||
+                            rawPrice === undefined ||
+                            rawPrice === ""
+                          ) {
+                            displayValue = "No URL";
+                          } else {
+                            const price = Number(rawPrice);
+                            if (isNaN(price)) {
+                              displayValue = "No URL";
+                            } else if (price === 0) {
+                              displayValue = "No Stock";
+                            } else {
+                              displayValue = price;
+                            }
+                          }
+
+                          const priceNum = Number(rawPrice);
+                          const isLower =
+                            !isNaN(priceNum) &&
+                            priceNum > 0 &&
+                            priceNum < selling;
+
                           return (
                             <td
                               key={`${idx}-${c}`}
                               className={`px-4 py-2 border ${
-                                isLower ? "text-red-600" : "text-gray-700"
+                                typeof displayValue === "number" && isLower
+                                  ? "text-red-600"
+                                  : "text-gray-700"
                               }`}
                             >
-                              {!isNaN(price) ? price : "-"}
+                              {displayValue}
                             </td>
                           );
                         })}
+                        <td className="px-4 py-2 border text-green-700 font-medium">
+                          {cheapestCompetitor}
+                        </td>
                         {activeTab === "table2" && (
                           <td className="px-4 py-2 border">
                             {stats.validPrices.length === 0
                               ? "No data"
-                              : selling === stats.min
+                              : selling <= stats.min
                               ? "🟢 Lowest"
-                              : selling === stats.max
+                              : selling >= stats.max
                               ? "🔴 Highest"
                               : selling < stats.avg
                               ? "🟡 Below Avg"
@@ -376,6 +462,18 @@ export default function Home() {
                               : "❌ Loss"}
                           </td>
                         )}
+                        {activeTab === "table3" && (
+                          <td className="px-4 py-2 border">
+                            {stats.validPrices.length === 0
+                              ? "-"
+                              : selling < stats.min
+                              ? stats.min - selling <= 100
+                                ? "fix"
+                                : "raise"
+                              : "-"}
+                          </td>
+                        )}
+
                         {(activeTab === "table2" || activeTab === "table3") && (
                           <td className="px-4 py-2 border text-blue-700 font-medium">
                             {stats.validPrices.length > 0 ? stats.min : "-"}
@@ -392,16 +490,20 @@ export default function Home() {
                   onClick={handleDownloadExcel}
                   className="bg-green-600 text-white px-5 py-2 rounded-md hover:bg-green-700 transition"
                 >
-                Download Filtered Excel
+                  Download Filtered Excel
                 </button>
                 <div className="w-full bg-gray-200 rounded-full h-2.5 mt-2">
                   <div
                     className="bg-purple-600 h-2.5 rounded-full transition-all"
-                    style={{ width: `${(numProductsProcessed / rowCount!) * 100}%` }}
+                    style={{
+                      width: `${(numProductsProcessed / rowCount!) * 100}%`,
+                    }}
                   />
                 </div>
                 <p className="text-sm mt-1 text-gray-600">
-                {rowCount ? `${numProductsProcessed} / ${rowCount} processed` : "Waiting for upload..."}
+                  {rowCount
+                    ? `${numProductsProcessed} / ${rowCount} processed`
+                    : "Waiting for upload..."}
                 </p>
               </div>
             </div>

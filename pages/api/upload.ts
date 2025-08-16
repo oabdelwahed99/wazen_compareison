@@ -9,6 +9,10 @@ import { scrapePriceEliraqi } from "../../lib/scraper/eliraqi";
 import { scrapePriceElsindbad } from "../../lib/scraper/elsindbad";
 import { scrapeRayaPrice } from "../../lib/scraper/raya";
 import { scrapeBtechPrice } from "../../lib/scraper/btech";
+import { scrapePriceAmazon } from "../../lib/scraper/amazon";
+import { scrapePriceSerag } from "../../lib/scraper/serag";
+import { scrapePricecairosales } from "../../lib/scraper/cairosales";
+import { scrapePriceNoon } from "../../lib/scraper/noon";
 
 import formidable from "formidable";
 
@@ -27,6 +31,10 @@ const competitors: { [key: string]: (url: string) => Promise<number | null> } =
     "elsindbadstore.com": scrapePriceElsindbad,
     "rayashop.com": scrapeRayaPrice,
     "btech.com": scrapeBtechPrice,
+    "amazon.com": scrapePriceAmazon,
+    "serag.com": scrapePriceSerag,
+    "cairosales.com": scrapePricecairosales,
+    "noon.com": scrapePriceNoon,
   };
 
 export default async function handler(
@@ -60,7 +68,7 @@ export default async function handler(
     let numProductsProcessed = 0;
 
     for (const product of products) {
-      const prices: Record<string, number | null> = {};
+      const prices: Record<string, number | null | string> = {};
 
       for (const [competitor, url] of Object.entries(product.urls)) {
         if (!url || url === "NA") {
